@@ -1,0 +1,27 @@
+{
+  "name": "@y2f/db-schema",
+  "version": "0.0.0",
+  "description": "Drizzle schema + inferred types for the shared Neon etf.* schema. Source of truth lives in etf-data-engine; consumed by yieldtofreedom as a git submodule.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "migrations"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.38.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
