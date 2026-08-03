@@ -13,10 +13,16 @@ submodule reference deliberately.
 
 - `src/schema.ts` — Drizzle table definitions for `etf.*` (`funds`, `distributions`,
   `distribution_composition`, `nav_history`, `computed_metrics`) plus indexes/constraints.
-- `src/index.ts` — re-exports the tables and inferred types.
-- `migrations/` — drizzle-kit SQL migrations (committed).
+  Implemented verbatim from [`docs/DATA_ENGINE_CONTEXT_BLUEPRINT.md`](../../docs/DATA_ENGINE_CONTEXT_BLUEPRINT.md) §Schema.
+- `src/types.ts` — inferred `Fund` / `NewFund` (and the same pair for the other four tables).
+- `src/client.ts` — `createDirectClient` / `createPooledClient` factories that assert the
+  pooled/direct shape of the connection string they're handed.
+- `src/index.ts` — barrel re-exporting all of the above.
+- Migrations live in the **parent** repo at `drizzle/` (drizzle-kit `out:`), not here — the
+  engine owns and runs them; this package is the shape contract only.
 
 ## Status
 
-Phase 0 scaffold only. The schema, migrations, read-only role grant, and read views land in
-Action Plan Phase 1. See [`docs/ACTION_PLAN.md`](../../docs/ACTION_PLAN.md).
+Phase 1 complete: the five `etf.*` tables, inferred types, and connection helpers are
+implemented. The `etf` schema is created and migrated by `etf-data-engine`; Y2F consumes
+this package read-only. See [`docs/ACTION_PLAN.md`](../../docs/ACTION_PLAN.md) Phase 1.

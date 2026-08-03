@@ -18,10 +18,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
-  "dependencies": {
-    "drizzle-orm": "^0.38.3"
+  "peerDependencies": {
+    "drizzle-orm": "^0.38.0",
+    "pg": "^8.0.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.3",
+    "drizzle-orm": "^0.38.4",
+    "pg": "^8.22.0",
     "typescript": "^5.7.2"
   }
 }
