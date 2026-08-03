@@ -22,25 +22,36 @@ import {
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const etf = pgSchema('etf');
 
 /** Master fund registry. Seeded from EDGAR + sponsor pages. */
-export const funds = etf.table('funds', {
-  id: serial('id').primaryKey(),
-  ticker: varchar('ticker', { length: 12 }).notNull().unique(),
-  name: text('name').notNull(),
-  sponsor: varchar('sponsor', { length: 80 }).notNull(), // YieldMax, Roundhill, NEOS...
-  cik: varchar('cik', { length: 12 }), // SEC identifier
-  strategyType: varchar('strategy_type', { length: 40 }), // single_stock_option, weekly_index, covered_call, cef...
-  underlying: varchar('underlying', { length: 40 }), // TSLA, NDX, etc. (nullable)
-  inception: date('inception'),
-  expenseRatio: numeric('expense_ratio', { precision: 6, scale: 4 }),
-  distFrequency: varchar('dist_frequency', { length: 16 }), // weekly, monthly, quarterly
-  status: varchar('status', { length: 16 }).default('active'), // active, closed, merged
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
+export const funds = etf.table(
+  'funds',
+  {
+    id: serial('id').primaryKey(),
+    ticker: varchar('ticker', { length: 12 }).notNull().unique(),
+    name: text('name').notNull(),
+    sponsor: varchar('sponsor', { length: 80 }).notNull(), // YieldMax, Roundhill, NEOS...
+    cik: varchar('cik', { length: 12 }), // SEC identifier (trust-level, not unique)
+    seriesId: varchar('series_id', { length: 16 }), // EDGAR series id, e.g. S000077650 — the real per-fund key
+    classId: varchar('class_id', { length: 16 }), // EDGAR class id, e.g. C000238138
+    tiingoPermaTicker: varchar('tiingo_perma_ticker', { length: 24 }), // Stable Tiingo id, e.g. US000000107614
+    lastIngestedAt: timestamp('last_ingested_at'), // When ingestion last touched this fund
+    strategyType: varchar('strategy_type', { length: 40 }), // single_stock_option, weekly_index, covered_call, cef...
+    underlying: varchar('underlying', { length: 40 }), // TSLA, NDX, etc. (nullable)
+    inception: date('inception'),
+    expenseRatio: numeric('expense_ratio', { precision: 6, scale: 4 }),
+    distFrequency: varchar('dist_frequency', { length: 16 }), // weekly, monthly, quarterly
+    status: varchar('status', { length: 16 }).default('active'), // active, closed, merged
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (t) => ({
+    seriesIdUniq: uniqueIndex('funds_series_id_uniq').on(t.seriesId).where(sql`series_id is not null`),
+  }),
+);
 
 /** Core time-series: one row per distribution. */
 export const distributions = etf.table(
