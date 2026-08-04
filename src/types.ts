@@ -9,6 +9,7 @@ import type {
   distributions,
   funds,
   navHistory,
+  parseReviewQueue,
 } from './schema';
 
 export type Fund = typeof funds.$inferSelect;
@@ -25,3 +26,6 @@ export type NewNavHistory = typeof navHistory.$inferInsert;
 
 export type ComputedMetric = typeof computedMetrics.$inferSelect;
 export type NewComputedMetric = typeof computedMetrics.$inferInsert;
+
+export type ParseReviewItem = typeof parseReviewQueue.$inferSelect;
+export type NewParseReviewItem = typeof parseReviewQueue.$inferInsert;

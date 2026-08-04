@@ -14,6 +14,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgSchema,
   serial,
@@ -94,9 +95,43 @@ export const distributionComposition = etf.table(
     sourceKey: text('source_key'), // R2 object key — PRIVATE bucket, read via presigned GET
     sourcePageUrl: text('source_page_url'), // public sponsor page the PDF came from
     capturedAt: timestamp('captured_at').defaultNow(),
+    // Phase 3 parse provenance.
+    parseMethod: varchar('parse_method', { length: 16 }), // pdfplumber | gemini | manual
+    parseConfidence: numeric('parse_confidence', { precision: 4, scale: 3 }), // 0..1
+    parsedAt: timestamp('parsed_at'), // when this parse ran
   },
   (t) => ({
     distIdx: index('comp_dist_idx').on(t.distributionId),
+    // One row per distribution per source form (19a-1 / 8937 / 1099), so a
+    // re-parse updates rather than duplicates — the idempotency contract for
+    // the whole phase (PHASE_3_SPEC.md §4).
+    distSourceUniq: uniqueIndex('comp_dist_source_uniq').on(t.distributionId, t.source),
+  }),
+);
+
+/** Human-in-the-loop review surface for low-confidence / ambiguous parses (Phase 3). */
+export const parseReviewQueue = etf.table(
+  'parse_review_queue',
+  {
+    id: serial('id').primaryKey(),
+    fundId: integer('fund_id')
+      .notNull()
+      .references(() => funds.id, { onDelete: 'restrict' }),
+    // NULL when the match itself failed (no distribution could be resolved).
+    distributionId: integer('distribution_id').references(() => distributions.id, {
+      onDelete: 'restrict',
+    }),
+    sourceKey: text('source_key').notNull(), // R2 object key of the PDF
+    sourcePageUrl: text('source_page_url'), // index page it was found on
+    reason: varchar('reason', { length: 40 }).notNull(), // no_match | ambiguous_match | sum_out_of_range | amount_mismatch | date_mismatch | parse_failed | low_confidence
+    detail: text('detail'), // human-readable explanation
+    rawExtract: jsonb('raw_extract'), // whatever the parser produced, for triage
+    status: varchar('status', { length: 16 }).notNull().default('open'), // open | accepted | rejected
+    createdAt: timestamp('created_at').defaultNow(),
+    resolvedAt: timestamp('resolved_at'),
+  },
+  (t) => ({
+    statusCreatedIdx: index('review_status_created_idx').on(t.status, t.createdAt),
   }),
 );
 
