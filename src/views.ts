@@ -116,9 +116,22 @@ export const vDistributionHistory = etf.view(
     exDate: date('ex_date'),
     recordDate: date('record_date'),
     payDate: date('pay_date'),
+    /** As paid on the ex-date, in the share terms of that date. */
     amount: numeric('amount', { precision: 12, scale: 6 }),
+    /** Split-adjusted into CURRENT-share terms. */
     amountAdjusted: numeric('amount_adjusted', { precision: 16, scale: 8 }),
+    /**
+     * RAW close on the ex-date — the price as quoted that day, in that day's
+     * share terms. Do NOT divide `amountAdjusted` by this: the two are on
+     * different bases, and across TSLY's 2025-12-01 reverse split the result is
+     * 5× too high. Use `closeOnExDateAdjusted` for any ratio against an
+     * adjusted amount.
+     */
     closeOnExDate: numeric('close_on_ex_date', { precision: 12, scale: 4 }),
+    /** The ex-date close in CURRENT-share terms — the denominator that pairs with `amountAdjusted`. */
+    closeOnExDateAdjusted: numeric('close_on_ex_date_adjusted', { precision: 16, scale: 8 }),
+    /** The multiplier applied to get the adjusted columns above, exposed so a consumer can audit them. */
+    cumSplitFactor: numeric('cum_split_factor', { precision: 16, scale: 8 }),
     confidenceScore: numeric('confidence_score', { precision: 4, scale: 3 }),
     rocPct: numeric('roc_pct', { precision: 6, scale: 3 }),
     niiPct: numeric('nii_pct', { precision: 6, scale: 3 }),
