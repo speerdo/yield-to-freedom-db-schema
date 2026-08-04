@@ -25,7 +25,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
       # This package is consumed as a git submodule and publishes through dist/,
       # which is gitignored. If it cannot build standalone, every consumer breaks
