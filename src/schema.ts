@@ -99,6 +99,20 @@ export const distributionComposition = etf.table(
     parseMethod: varchar('parse_method', { length: 16 }), // pdfplumber | gemini | manual
     parseConfidence: numeric('parse_confidence', { precision: 4, scale: 3 }), // 0..1
     parsedAt: timestamp('parsed_at'), // when this parse ran
+    // Phase 4 supersession. NULL = current; set on the ESTIMATE row pointing at
+    // the final that replaced it. The estimate row is never deleted or edited
+    // in place — history is preserved by construction (PHASE_4_SPEC.md §5).
+    //
+    // Not a Drizzle `references()` self-FK: a self-referential FK through
+    // `references(() => distributionComposition.id)` makes the table implicit-any
+    // in its own initializer (TS7022/7024 under strict), so the FK is enforced
+    // by `pnpm dq` invariant checks (PHASE_4_SPEC.md §8: no cycles, no row
+    // superseded by a lower-precedence row) rather than a DB constraint. A
+    // concrete no-composition-row-deletion rule in the worker covers the
+    // practical `onDelete: restrict` intent — composition rows are append-only
+    // in this repo.
+    supersededById: integer('superseded_by_id'),
+    supersededAt: timestamp('superseded_at'),
   },
   (t) => ({
     distIdx: index('comp_dist_idx').on(t.distributionId),
@@ -106,6 +120,40 @@ export const distributionComposition = etf.table(
     // re-parse updates rather than duplicates — the idempotency contract for
     // the whole phase (PHASE_3_SPEC.md §4).
     distSourceUniq: uniqueIndex('comp_dist_source_uniq').on(t.distributionId, t.source),
+    // Phase 4: read surfaces select `where superseded_by_id is null`, so index
+    // the column for those lookups.
+    supersededByIdIdx: index('comp_superseded_by_id_idx').on(t.supersededById),
+  }),
+);
+
+/**
+ * Phase 4 — the "which source won and why" trail. Append-only; never update or
+ * delete a row here (PHASE_4_SPEC.md §5). The `evidence` JSON holds the values
+ * compared, so any decision can be re-audited long after the row is written.
+ */
+export const reconciliationLog = etf.table(
+  'reconciliation_log',
+  {
+    id: serial('id').primaryKey(),
+    distributionId: integer('distribution_id')
+      .notNull()
+      .references(() => distributions.id, { onDelete: 'restrict' }),
+    // superseded | date_backfilled | agreement | disagreement
+    //
+    // Every value here MUST be emitted by some code path. `confidence_scored`
+    // was originally listed and dropped: scoring touches all 336 distributions
+    // on every run, so logging it would add a row per distribution per run to an
+    // append-only table while the score column already records the outcome. A
+    // declared-but-never-emitted value is indistinguishable from a broken one.
+    action: varchar('action', { length: 24 }).notNull(),
+    winningSource: varchar('winning_source', { length: 16 }), // e.g. "8937"
+    losingSource: varchar('losing_source', { length: 16 }), // e.g. "19a-1"
+    detail: text('detail').notNull(),
+    evidence: jsonb('evidence'),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (t) => ({
+    distCreatedIdx: index('recon_dist_created_idx').on(t.distributionId, t.createdAt),
   }),
 );
 

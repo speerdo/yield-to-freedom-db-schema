@@ -10,6 +10,7 @@ import type {
   funds,
   navHistory,
   parseReviewQueue,
+  reconciliationLog,
 } from './schema';
 
 export type Fund = typeof funds.$inferSelect;
@@ -29,3 +30,7 @@ export type NewComputedMetric = typeof computedMetrics.$inferInsert;
 
 export type ParseReviewItem = typeof parseReviewQueue.$inferSelect;
 export type NewParseReviewItem = typeof parseReviewQueue.$inferInsert;
+
+// Phase 4
+export type ReconciliationLogEntry = typeof reconciliationLog.$inferSelect;
+export type NewReconciliationLogEntry = typeof reconciliationLog.$inferInsert;
