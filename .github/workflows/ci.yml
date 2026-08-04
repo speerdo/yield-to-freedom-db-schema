@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --no-frozen-lockfile
+
+      # This package is consumed as a git submodule and publishes through dist/,
+      # which is gitignored. If it cannot build standalone, every consumer breaks
+      # at typecheck with TS2307 — which is exactly how it broke once already.
+      # Verify it here rather than discovering it downstream.
+      - run: pnpm build
+      - run: pnpm typecheck
+
+      - name: dist/ must actually be emitted
+        run: |
+          test -f dist/index.js  || { echo "::error::dist/index.js was not emitted"; exit 1; }
+          test -f dist/index.d.ts || { echo "::error::dist/index.d.ts was not emitted"; exit 1; }
+          echo "dist/index.js and dist/index.d.ts present"

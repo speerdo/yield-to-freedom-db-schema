@@ -1,28 +1,95 @@
 # @y2f/db-schema
 
-Drizzle schema + inferred TypeScript types for the **shared Neon `etf.*` schema** — the
-contract between [`etf-data-engine`](../../) (write owner) and `yieldtofreedom` (read-only
-consumer).
+Drizzle table definitions and inferred TypeScript types for the shared Neon **`etf.*`**
+schema — the contract between the ingestion engine that writes it and the consumers that
+read it.
 
-This is a **separate git repository**, consumed by `etf-data-engine` (and, later, by
-`yieldtofreedom`) as a **git submodule** at `packages/db-schema`. The data engine is the
-**source of truth**; bump the tag/commit here whenever `etf.*` changes, and Y2F updates the
-submodule reference deliberately.
+This package is the **shape contract only**. It contains no migrations and no business
+logic: the engine repo owns `drizzle/` and is the only thing permitted to migrate `etf.*`.
 
-## Contents (post Phase 1)
+> **On links:** the engine repo (`etf-data-engine`) is private, so this README deliberately
+> does not link into it — anything you need is restated here.
 
-- `src/schema.ts` — Drizzle table definitions for `etf.*` (`funds`, `distributions`,
-  `distribution_composition`, `nav_history`, `computed_metrics`) plus indexes/constraints.
-  Implemented verbatim from [`docs/DATA_ENGINE_CONTEXT_BLUEPRINT.md`](../../docs/DATA_ENGINE_CONTEXT_BLUEPRINT.md) §Schema.
-- `src/types.ts` — inferred `Fund` / `NewFund` (and the same pair for the other four tables).
-- `src/client.ts` — `createDirectClient` / `createPooledClient` factories that assert the
-  pooled/direct shape of the connection string they're handed.
-- `src/index.ts` — barrel re-exporting all of the above.
-- Migrations live in the **parent** repo at `drizzle/` (drizzle-kit `out:`), not here — the
-  engine owns and runs them; this package is the shape contract only.
+## Consume
 
-## Status
+Via **git submodule**, not a registry:
 
-Phase 1 complete: the five `etf.*` tables, inferred types, and connection helpers are
-implemented. The `etf` schema is created and migrated by `etf-data-engine`; Y2F consumes
-this package read-only. See [`docs/ACTION_PLAN.md`](../../docs/ACTION_PLAN.md) Phase 1.
+```bash
+git submodule add git@github.com:speerdo/yield-to-freedom-db-schema.git packages/db-schema
+git submodule update --init --recursive
+```
+
+**Build it before importing.** `package.json` points `main`/`types` at `dist/`, and `dist/`
+is gitignored — a fresh checkout contains source only:
+
+```bash
+pnpm install && pnpm build     # emits dist/index.js + dist/index.d.ts
+```
+
+Skipping this gives `TS2307: Cannot find module '@y2f/db-schema'` at typecheck and a bundler
+`packageEntryFailure` at test time. Put `pnpm build` **before** typecheck and test in CI.
+
+`drizzle-orm` and `pg` are **peer dependencies** — the consumer supplies them, so there is
+exactly one copy of Drizzle in the dependency graph.
+
+> If `pnpm build` prints `Done` but emits no `dist/`, delete the stale `.tsbuildinfo`. It is
+> a dotfile, so a `rm *.tsbuildinfo` glob misses it and `tsc` then believes the output is
+> current. `pnpm clean` handles it.
+
+## Usage
+
+```ts
+import { funds, type Fund, createPooledClient } from '@y2f/db-schema';
+
+const { db } = createPooledClient(process.env.DATABASE_URL_READONLY);
+const rows: Fund[] = await db.select().from(funds);
+```
+
+## Contents
+
+| File | What |
+|---|---|
+| `src/schema.ts` | The seven `etf.*` tables, with indexes and constraints |
+| `src/types.ts` | Inferred select/insert type pairs for every table |
+| `src/client.ts` | `createDirectClient` / `createPooledClient` factories |
+| `src/index.ts` | Barrel re-exporting all of the above |
+
+**Tables:** `funds`, `distributions`, `distribution_composition`, `nav_history`,
+`computed_metrics`, `parse_review_queue`, `reconciliation_log`.
+
+**Types:** `Fund`/`NewFund`, `Distribution`/`NewDistribution`,
+`DistributionComposition`/`NewDistributionComposition`, `NavHistory`/`NewNavHistory`,
+`ComputedMetric`/`NewComputedMetric`, `ParseReviewItem`/`NewParseReviewItem`,
+`ReconciliationLogEntry`/`NewReconciliationLogEntry`.
+
+### Connection helpers
+
+Neon exposes two endpoints per compute differing only by a `-pooler` infix, which makes them
+easy to swap by accident — and the failure is silent until a migration behaves oddly. Both
+factories reject a connection string whose shape contradicts their purpose:
+
+- `createDirectClient(url?)` — non-pooled `pg.Client` for migrations and long-running
+  workers. Defaults to `DATABASE_URL`. **Rejects** a `-pooler` host.
+- `createPooledClient(url?)` — `pg.Pool` for serverless reads. Defaults to
+  `DATABASE_URL_POOLED`. **Rejects** a non-pooler host.
+
+## Write ownership
+
+`etf.*` is written by the engine and read by everyone else. Read access goes through the
+`y2f_reader` Postgres role, which holds `SELECT` on `etf.*` and nothing more — enforced at
+the database level, so a bug in consumer code cannot write.
+
+## Versioning
+
+Semver by git tag. Consumers pin a tag deliberately rather than tracking `main`.
+
+| Tag | Change |
+|---|---|
+| `v0.1.0` | Initial five `etf.*` tables, inferred types, connection helpers |
+| `v0.2.0` | Fund identity — `series_id`, `class_id`, `tiingo_perma_ticker`, `last_ingested_at` |
+| `v0.3.0` | Parse provenance on composition, plus `parse_review_queue` |
+| `v0.4.0` | Supersession (`superseded_by_id`, `superseded_at`) and `reconciliation_log` |
+| `v0.4.1` | Build-script fix only — no schema change |
+
+**Any `etf.*` change needs a version bump and a tag.** A schema change that reaches `main`
+untagged is invisible to consumers pinning tags, which is the whole point of the contract.
