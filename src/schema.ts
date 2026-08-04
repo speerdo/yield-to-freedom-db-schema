@@ -18,6 +18,7 @@ import {
   numeric,
   pgSchema,
   serial,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -183,7 +184,23 @@ export const parseReviewQueue = etf.table(
   }),
 );
 
-/** NAV + price history for erosion / real-yield math. */
+/**
+ * NAV + price history for erosion / real-yield math.
+ *
+ * Phase 5 added `split_factor` (Tiingo's `splitFactor` for the trading day, as
+ * reported; `0.2` on the day a 1-for-5 reverse split takes effect) and
+ * `cum_split_factor` (the multiplier converting a per-share value on that date
+ * into current-share terms: `1 / Π(split_factor of every split strictly after
+ * this date)`. `1` for every date after the last split). Both are
+ * split-adjustment inputs for the metrics in PHASE_5_SPEC.md §5. The `cum_`
+ * column is derived-and-stored deliberately: it makes both the metrics job and
+ * the read views a single multiplication instead of a correlated subquery.
+ *
+ * `nav` is unpopulated except for six Phase 1 fixture rows (JEPI + TSLY,
+ * 2025-01-29..31 — invented numbers). Phase 5 nulls those out and proxies NAV
+ * with split-adjusted `close` (PHASE_5_SPEC.md §2.3). Never `COALESCE(nav,
+ * close)` — that silently mixes six fabricated numbers into a real series.
+ */
 export const navHistory = etf.table(
   'nav_history',
   {
@@ -194,13 +211,34 @@ export const navHistory = etf.table(
     date: date('date').notNull(),
     nav: numeric('nav', { precision: 12, scale: 4 }),
     close: numeric('close', { precision: 12, scale: 4 }),
+    // Phase 5 — Tiingo's `splitFactor` for this trading day, as reported. `0.2`
+    // on the day a 1-for-5 reverse split takes effect; `1` on a normal day.
+    splitFactor: numeric('split_factor', { precision: 12, scale: 6 }).notNull().default('1'),
+    // Phase 5 — multiplier converting a per-share value on this date into
+    // current-share terms. `1 / Π(split_factor of every split strictly after
+    // this date)`. `1` for every date after the fund's last split. Recomputed
+    // wholesale for the fund's entire series at the end of every nav run.
+    cumSplitFactor: numeric('cum_split_factor', { precision: 16, scale: 8 })
+      .notNull()
+      .default('1'),
   },
   (t) => ({
     fundDateUniq: uniqueIndex('nav_fund_date_uniq').on(t.fundId, t.date),
   }),
 );
 
-/** Materialized derived metrics, recomputed on each refresh. Read surface for UI + API. */
+/**
+ * Materialized derived metrics, recomputed on each refresh. Read surface for UI + API.
+ *
+ * Phase 5 added `ttm_roc_coverage_pct` (share of TTM distribution dollars backed
+ * by a current composition row — never NULL when `ttm_roc_pct` is non-NULL;
+ * PHASE_5_SPEC.md §3 rule 6) and `dist_cagr_years` (the span `dist_cagr` was
+ * measured over — 1, 2, or 3; NULL when `dist_cagr` is NULL). Both travel with
+ * the metric they qualify, so a consumer cannot render one without the other.
+ *
+ * Units are percent, everywhere: `109.2233` means 109.2233%. `nav_erosion_12m`
+ * is a signed return — negative means erosion (PHASE_5_SPEC.md §5.2).
+ */
 export const computedMetrics = etf.table(
   'computed_metrics',
   {
@@ -210,11 +248,19 @@ export const computedMetrics = etf.table(
       .references(() => funds.id, { onDelete: 'restrict' }),
     asOf: date('as_of').notNull(),
     ttmYield: numeric('ttm_yield', { precision: 8, scale: 4 }),
-    realYield: numeric('real_yield', { precision: 8, scale: 4 }), // dist yield − NAV erosion
-    navErosion12m: numeric('nav_erosion_12m', { precision: 8, scale: 4 }),
+    realYield: numeric('real_yield', { precision: 8, scale: 4 }), // 12m simple total return on the starting price (PHASE_5_SPEC.md §5.3)
+    navErosion12m: numeric('nav_erosion_12m', { precision: 8, scale: 4 }), // signed 12m price return; negative = erosion
     distCagr: numeric('dist_cagr', { precision: 8, scale: 4 }),
     totalReturnDrip: numeric('total_return_drip', { precision: 8, scale: 4 }),
     ttmRocPct: numeric('ttm_roc_pct', { precision: 6, scale: 3 }), // trailing ROC share
+    // Phase 5 — share of TTM distribution dollars (split-adjusted) backed by a
+    // current composition row. Never NULL when `ttm_roc_pct` is non-NULL
+    // (§3 rule 6); NULL only when `ttm_roc_pct` is NULL (JEPI/JEPQ today).
+    ttmRocCoveragePct: numeric('ttm_roc_coverage_pct', { precision: 5, scale: 2 }),
+    // Phase 5 — the span `dist_cagr` was measured over (1, 2, or 3). NULL when
+    // `dist_cagr` is NULL. A 1-year change and a 3-year annualized rate are
+    // not comparable numbers (§5.4).
+    distCagrYears: smallint('dist_cagr_years'),
     createdAt: timestamp('created_at').defaultNow(),
   },
   (t) => ({

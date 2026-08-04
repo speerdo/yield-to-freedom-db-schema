@@ -50,12 +50,18 @@ const rows: Fund[] = await db.select().from(funds);
 | File | What |
 |---|---|
 | `src/schema.ts` | The seven `etf.*` tables, with indexes and constraints |
+| `src/views.ts` | The three read views (`v_screener`, `v_fund_detail`, `v_distribution_history`) declared `.existing()` so drizzle-kit never emits or drops their DDL |
 | `src/types.ts` | Inferred select/insert type pairs for every table |
 | `src/client.ts` | `createDirectClient` / `createPooledClient` factories |
 | `src/index.ts` | Barrel re-exporting all of the above |
 
 **Tables:** `funds`, `distributions`, `distribution_composition`, `nav_history`,
 `computed_metrics`, `parse_review_queue`, `reconciliation_log`.
+
+**Views:** `v_screener` (one row per fund, latest metrics — the ranking surface),
+`v_fund_detail` (one row per fund, everything in `v_screener` plus long-tail
+provenance), `v_distribution_history` (one row per distribution with its current
+composition and split adjustment). Y2F binds to these views, never to raw tables.
 
 **Types:** `Fund`/`NewFund`, `Distribution`/`NewDistribution`,
 `DistributionComposition`/`NewDistributionComposition`, `NavHistory`/`NewNavHistory`,
@@ -90,6 +96,7 @@ Semver by git tag. Consumers pin a tag deliberately rather than tracking `main`.
 | `v0.3.0` | Parse provenance on composition, plus `parse_review_queue` |
 | `v0.4.0` | Supersession (`superseded_by_id`, `superseded_at`) and `reconciliation_log` |
 | `v0.4.1` | Build-script fix only — no schema change |
+| `v0.5.0` | Phase 5 — `nav_history.split_factor` / `cum_split_factor`, `computed_metrics.ttm_roc_coverage_pct` / `dist_cagr_years`, and three read views (`v_screener`, `v_fund_detail`, `v_distribution_history`) declared `.existing()` |
 
 **Any `etf.*` change needs a version bump and a tag.** A schema change that reaches `main`
 untagged is invisible to consumers pinning tags, which is the whole point of the contract.
