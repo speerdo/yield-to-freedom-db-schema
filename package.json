@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rm -rf dist .tsbuildinfo *.tsbuildinfo"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.38.0",
