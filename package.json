@@ -1,6 +1,6 @@
 {
   "name": "@y2f/db-schema",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Drizzle schema + inferred types for the shared Neon etf.* schema. Source of truth lives in etf-data-engine; consumed by yieldtofreedom as a git submodule.",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,6 +10,22 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
+    },
+    "./views": {
+      "types": "./dist/views.d.ts",
+      "import": "./dist/views.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
     }
   },
   "files": ["dist", "migrations"],
@@ -19,12 +35,16 @@
     "clean": "rm -rf dist .tsbuildinfo *.tsbuildinfo"
   },
   "peerDependencies": {
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": ">=0.38.0 <1.0.0",
     "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/pg": "^8.20.3",
-    "drizzle-orm": "^0.38.4",
     "pg": "^8.22.0",
     "typescript": "^5.7.2"
   }
