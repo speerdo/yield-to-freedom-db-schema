@@ -105,9 +105,45 @@ export const vFundDetail = etf.view(
  * `etf.v_distribution_history` — one row per distribution; the fund-detail
  * page's table and the thing that makes the moat visible. Hides the
  * current-vs-superseded + source-precedence + split-adjustment joins from the
- * consumer (§7). `amount` is as-paid; `amount_adjusted` is split-adjusted into
- * current-share terms. `superseded` is always false in this view (present so
- * the shape does not change if a history variant is added later).
+ * consumer (§7). `superseded` is always false in this view (present so the
+ * shape does not change if a history variant is added later).
+ *
+ * Phase 7 (PHASE_7_SPEC.md §5 Deliverable 3) removed four Tiingo-derived
+ * price columns: `close_on_ex_date`, `close_on_ex_date_adjusted`,
+ * `cum_split_factor`, `amount_adjusted`. Raw daily prices cannot be served
+ * through the developer API at any tier, and require the $250/mo Display
+ * Redistribution plan to show on the site; the $50/mo Internal Commercial
+ * plan we are on does not cover them (TIINGO_LICENSE_RESPONSE.md §1/§2).
+ * They come back tagged `sponsor` once Phase 8's sponsor NAV ingestion lands
+ * them from sponsor pages.
+ *
+ * `amount` is kept, even though it is still Tiingo-sourced today (§3.1: all
+ * 336 rows) and therefore still prohibited as a raw dividend table. The
+ * provenance gate (Deliverable 4) resolves `amount` through
+ * `distributions.field_sources` and reports RED while any row still reports
+ * `tiingo`; it goes green when Deliverable 6 re-sources it from filings.
+ * Dropping `amount` now would gut the view; the constraint until then is on
+ * new consumers and Phase 9, not on Y2F's existing screener.
+ *
+ * Phase 7 (PHASE_7_SPEC.md §5 Deliverable 7) changed the composition LATERAL
+ * join to field-level precedence. One order throughout — 1099 > 8937 > 19a-1,
+ * matching `SOURCE_PRECEDENCE` in the engine's supersede job:
+ *
+ *   `roc_pct`   → 1099, else 8937, else 19a-1
+ *   `nii_pct`   → 1099, else 19a-1   (the 8937 reports ROC only)
+ *   ST/LT gain  → 1099, else 19a-1   (empty in practice — no source reports them)
+ *
+ * The previous single-row pick made `nii_pct` NULL for TSLY and NVDY because
+ * every current row for them is an 8937 (ROC-only); the data was in the
+ * *superseded* 19a-1 rows and the view didn't surface it. The join therefore
+ * does not consult `superseded_by_id` at all — reading across the
+ * estimate/final pair is the point, and one row per source per distribution
+ * is already guaranteed by `comp_dist_source_uniq`.
+ *
+ * `source` / `is_estimate` / `parse_confidence` / `source_key` /
+ * `source_page_url` describe the row `roc_pct` came from, and follow the same
+ * order as `roc_pct` deliberately: a `source` of '1099' beside a ROC figure
+ * taken from the 19a-1 would attribute the filed number to the wrong document.
  */
 export const vDistributionHistory = etf.view(
   'v_distribution_history',
@@ -116,22 +152,8 @@ export const vDistributionHistory = etf.view(
     exDate: date('ex_date'),
     recordDate: date('record_date'),
     payDate: date('pay_date'),
-    /** As paid on the ex-date, in the share terms of that date. */
+    /** As paid on the ex-date, in the share terms of that date. Still Tiingo-sourced today; re-sourced from filings in Deliverable 6. */
     amount: numeric('amount', { precision: 12, scale: 6 }),
-    /** Split-adjusted into CURRENT-share terms. */
-    amountAdjusted: numeric('amount_adjusted', { precision: 16, scale: 8 }),
-    /**
-     * RAW close on the ex-date — the price as quoted that day, in that day's
-     * share terms. Do NOT divide `amountAdjusted` by this: the two are on
-     * different bases, and across TSLY's 2025-12-01 reverse split the result is
-     * 5× too high. Use `closeOnExDateAdjusted` for any ratio against an
-     * adjusted amount.
-     */
-    closeOnExDate: numeric('close_on_ex_date', { precision: 12, scale: 4 }),
-    /** The ex-date close in CURRENT-share terms — the denominator that pairs with `amountAdjusted`. */
-    closeOnExDateAdjusted: numeric('close_on_ex_date_adjusted', { precision: 16, scale: 8 }),
-    /** The multiplier applied to get the adjusted columns above, exposed so a consumer can audit them. */
-    cumSplitFactor: numeric('cum_split_factor', { precision: 16, scale: 8 }),
     confidenceScore: numeric('confidence_score', { precision: 4, scale: 3 }),
     rocPct: numeric('roc_pct', { precision: 6, scale: 3 }),
     niiPct: numeric('nii_pct', { precision: 6, scale: 3 }),

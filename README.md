@@ -136,6 +136,7 @@ Semver by git tag. Consumers pin a tag deliberately rather than tracking `main`.
 | `v0.5.0` | Phase 5 — `nav_history.split_factor` / `cum_split_factor`, `computed_metrics.ttm_roc_coverage_pct` / `dist_cagr_years`, and three read views (`v_screener`, `v_fund_detail`, `v_distribution_history`) declared `.existing()` |
 | `v0.6.0` | Phase 5 review — `v_distribution_history` exposes `close_on_ex_date_adjusted` (the denominator that pairs with `amount_adjusted`) |
 | `v0.7.0` | Phase 6 — subpath exports (`./views`, `./schema`, `./types`, `./client`); `pg` optional peer; drizzle-orm peer range widened to `>=0.38.0 <1.0.0`. Lets read-only consumers import the views without `pg` and pin Drizzle `0.45.x` |
+| `v0.8.0` | Phase 7 — **breaking**: `v_distribution_history` drops four Tiingo-derived price columns (`close_on_ex_date`, `close_on_ex_date_adjusted`, `cum_split_factor`, `amount_adjusted`); they come back tagged `sponsor` once Phase 8 lands sponsor NAV ingestion. Adds `distributions.field_sources` jsonb (per-field provenance, for the filing-source re-sourcing job). Adds `./provenance` subpath export: the provenance manifest + transitive resolution helpers (PHASE_7_SPEC.md §4). The view's composition LATERAL join takes field-level precedence (`roc_pct` from 8937, `nii_pct` from 19a-1) so NII surfaces for TSLY/NVDY. |
 
 **Any `etf.*` change needs a version bump and a tag.** A schema change that reaches `main`
 untagged is invisible to consumers pinning tags, which is the whole point of the contract.

@@ -70,6 +70,16 @@ export const distributions = etf.table(
     amount: numeric('amount', { precision: 12, scale: 6 }).notNull(),
     frequency: varchar('frequency', { length: 16 }),
     sourceProvider: varchar('source_provider', { length: 40 }).notNull(), // tiingo, sponsor, stockanalysis
+    // Phase 7 — field-level provenance for the amount + four date fields
+    // (PHASE_7_SPEC.md §5 Deliverable 6). One column can't express
+    // "amount came from the 8937, pay_date came from the 19a-1, ex_date is
+    // still Tiingo". A jsonb map does: `{"amount":"filing","pay_date":"filing",
+    // "ex_date":"tiingo"}`. The provenance manifest tags
+    // `distributions.amount` by what `field_sources` reports; dq asserts the
+    // two agree. NULL = legacy row written before Phase 7; the gate treats a
+    // NULL field_sources as "every source-bearing field is `source_provider`"
+    // for that row (today: every row is `tiingo`).
+    fieldSources: jsonb('field_sources'),
     confidenceScore: numeric('confidence_score', { precision: 4, scale: 3 }), // 0..1
     createdAt: timestamp('created_at').defaultNow(),
   },

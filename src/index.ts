@@ -9,3 +9,4 @@ export * from './schema';
 export * from './views';
 export * from './types';
 export * from './client';
+export * from './provenance';
