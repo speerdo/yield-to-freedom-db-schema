@@ -141,6 +141,14 @@ export const PROVENANCE: Record<string, Provenance> = {
   'funds.cik': { tag: 'edgar' },
   'funds.series_id': { tag: 'edgar' },
   'funds.class_id': { tag: 'edgar' },
+  // Phase 8 — CUSIP is a public securities identifier (issued by CUSIP Global
+  // Services, appears on SEC filings and sponsor tax documents). It is the
+  // stable per-fund key the group 19a-1 parser resolves a parsed block by,
+  // since group notices carry no ticker. Tagged `edgar`, not `sponsor`: the
+  // value comes from filings (8937 Statement 1, N-PORT) even when the
+  // immediate source is a sponsor PDF, because the CUSIP itself is a public
+  // SEC identifier rather than sponsor-derived market data.
+  'funds.cusip': { tag: 'edgar' },
   'funds.tiingo_perma_ticker': {
     tag: 'internal',
     reason: 'Tiingo stable internal identifier (e.g. US000000107614) — a lookup key for Tiingo API resolution, not market data; not reconstructible into prices or dividends',

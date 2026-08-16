@@ -39,6 +39,13 @@ export const funds = etf.table(
     cik: varchar('cik', { length: 12 }), // SEC identifier (trust-level, not unique)
     seriesId: varchar('series_id', { length: 16 }), // EDGAR series id, e.g. S000077650 — the real per-fund key
     classId: varchar('class_id', { length: 16 }), // EDGAR class id, e.g. C000238138
+    // Phase 8 — CUSIP. The group 19a-1 notices identify funds by fund name +
+    // CUSIP (no ticker in the body), and the 8937 Statement 1 row carries the
+    // same CUSIP, so this is the stable per-fund key the group parser resolves
+    // a parsed block to `funds.id` with. Public SEC identifier (provenance:
+    // `edgar`, not `sponsor`). Nullable: backfilled for the existing five from
+    // the 8937 rows; new funds get theirs from EDGAR or the group notice.
+    cusip: varchar('cusip', { length: 9 }),
     tiingoPermaTicker: varchar('tiingo_perma_ticker', { length: 24 }), // Stable Tiingo id, e.g. US000000107614
     lastIngestedAt: timestamp('last_ingested_at'), // When ingestion last touched this fund
     strategyType: varchar('strategy_type', { length: 40 }), // single_stock_option, weekly_index, covered_call, cef...
@@ -52,6 +59,10 @@ export const funds = etf.table(
   },
   (t) => ({
     seriesIdUniq: uniqueIndex('funds_series_id_uniq').on(t.seriesId).where(sql`series_id is not null`),
+    // Phase 8 — a CUSIP identifies one security; two funds rows sharing a CUSIP
+    // is a data bug (e.g. the same fund seeded twice under different tickers).
+    // Partial unique index: NULL CUSIPs are allowed (fund not yet resolved).
+    cusipUniq: uniqueIndex('funds_cusip_uniq').on(t.cusip).where(sql`cusip is not null`),
   }),
 );
 
