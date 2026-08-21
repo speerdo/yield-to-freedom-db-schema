@@ -14,6 +14,17 @@
 //   tiingo   — from the Tiingo API. NOT publishable without a written
 //              redistribution right; the $50/mo Internal Commercial plan
 //              covers derived scalars only (TIINGO_LICENSE_RESPONSE.md §1).
+//   public_record
+//            — a fact a public body publishes and a vendor merely relays: a
+//              corporate-action date, an exchange calendar. Tiingo may have
+//              been the wire it arrived on, but Tiingo is not its source and
+//              cannot be its licensor. Distinct from `internal` on purpose:
+//              `internal` means "carries no source data at all", which would
+//              be a lie about an ex-date, and hiding a real column behind the
+//              escape hatch is exactly what makes the hatch dangerous. A
+//              `public_record` tag is a claim about the world that a reviewer
+//              can check, and it must name where the public publishes it.
+//              Added 2026-08-20 (OPEN_ITEMS.md Decisions D1).
 //   derived  — computed by this repo; carries `inputs: [...]` naming the
 //              columns it derives from. Its effective provenance is the union
 //              of its inputs, resolved transitively. `ttm_yield` is `derived`
@@ -46,7 +57,12 @@ export type Provenance =
   | { tag: 'sponsor' }
   | { tag: 'tiingo' }
   | { tag: 'derived'; inputs: string[] } // 'table.column' refs into PROVENANCE
-  | { tag: 'internal'; reason: string };
+  | { tag: 'internal'; reason: string }
+  // `publisher` names the public body that publishes this fact, so the claim
+  // is checkable rather than asserted. Carries a `reason` for the same purpose
+  // `internal` does: this tag clears a column for publication, so it must
+  // justify itself in review.
+  | { tag: 'public_record'; publisher: string; reason: string };
 
 /**
  * The six scalar metrics in `computed_metrics` that Tiingo cleared on the
@@ -112,6 +128,39 @@ export const TIINGO_ALLOWLIST: readonly TiingoAllowlistedColumn[] = [
     date: '2026-08-06',
     source: 'TIINGO_LICENSE_RESPONSE.md §1',
   },
+  {
+    // The seventh entry, and the only one not covered by the 2026-08-06 reply.
+    // Read the `date` and `source` below carefully before citing this one: it
+    // is an operator decision, not a licensor answer, and it is the single
+    // place in this file where the allowlist's own "someone in authority said
+    // yes" rule is bent. It is recorded that way deliberately rather than
+    // dressed up as §1, so the next reader can tell the difference.
+    //
+    // The argument: coverage is the denominator of the very computation
+    // `ttm_roc_pct` reports, at the same granularity, with the same shape —
+    // one scalar per fund. If the headline passes both §1.6 tests, its
+    // coverage cannot fail them; it carries strictly less information. And
+    // publishing the headline *without* it (OPEN_ITEMS.md #29) is the worse
+    // outcome for a reader, which `views.ts` says in as many words: the
+    // context columns exist "to keep a number from being read as more than it
+    // is".
+    //
+    // Possibly stricter than it needs to be, and left that way on purpose.
+    // The 2026-08-07 reply's answer 2a is a *general rule*, not a list of six:
+    // "single scalar metrics computed over a 12-month window (yields, Sharpe
+    // ratios, alpha, beta, drawdown, return %) pass Section 1.6". Coverage is
+    // a single scalar over a 12-month window, so §1 arguably already covers
+    // it. But the reply does not name coverage percentages, and reading a
+    // general rule generously is how an allowlist stops meaning anything —
+    // so this stays flagged as an operator decision until someone says the
+    // word. D2's email asks directly. If the answer is no, this entry comes
+    // out and `ttm_roc_pct` goes with it.
+    column: 'computed_metrics.ttm_roc_coverage_pct',
+    reason:
+      'Single scalar coverage share for ttm_roc_pct — same shape and non-reconstructibility as the allowlisted headline it qualifies. OPERATOR DECISION pending a written answer, not a Tiingo clearance.',
+    date: '2026-08-20',
+    source: 'docs/OPEN_ITEMS.md Decisions D1 (operator) — confirmation requested, see D2',
+  },
 ] as const;
 
 /**
@@ -173,10 +222,44 @@ export const PROVENANCE: Record<string, Provenance> = {
     tag: 'internal',
     reason: 'FK to funds.id; identity reference, not source data',
   },
-  'distributions.ex_date': { tag: 'tiingo' },
-  'distributions.record_date': { tag: 'tiingo' },
-  'distributions.pay_date': { tag: 'tiingo' },
-  'distributions.declaration_date': { tag: 'tiingo' },
+  // The four dates are `public_record` as of 2026-08-20 (OPEN_ITEMS.md
+  // Decisions D1). A distribution schedule is a corporate action: the fund
+  // declares it, the 19a-1 states it, the sponsor press-releases it, and the
+  // exchange disseminates it. Tiingo was the wire it reached us on and is not
+  // its source — the same argument already accepted for `nav_history.date`
+  // below, and the reason that one is not tagged `tiingo` either.
+  //
+  // What this tag does NOT claim: that a distribution *amount* is public in
+  // the same way. Amount stays `tiingo` (see below). The licence bars a raw
+  // dividend table, which is amount × date; the dates alone are a schedule,
+  // and a schedule is not the licensed asset. That combination is the whole
+  // reasoning, and it is why re-tagging the dates without also gating the
+  // amount would be an error.
+  //
+  // `ex_date` in particular can never be re-sourced to `filing`: it is the
+  // join key, and `ingestFilingSources.ts` §4 documents that re-sourcing it
+  // from a filing that does not state it would orphan the row. So a tag was
+  // always going to be the only instrument here.
+  'distributions.ex_date': {
+    tag: 'public_record',
+    publisher: 'fund declaration / SEC 19a-1 / exchange corporate-action feed',
+    reason: 'ex-dividend date — a declared corporate action, and the join key this table is built on',
+  },
+  'distributions.record_date': {
+    tag: 'public_record',
+    publisher: 'fund declaration / SEC 19a-1',
+    reason: 'record date — stated in the declaration and on the 19a-1 notice',
+  },
+  'distributions.pay_date': {
+    tag: 'public_record',
+    publisher: 'fund declaration / SEC 19a-1',
+    reason: 'payable date — stated in the declaration and on the 19a-1 notice',
+  },
+  'distributions.declaration_date': {
+    tag: 'public_record',
+    publisher: 'fund declaration',
+    reason: 'declaration date — the date the fund announced the distribution',
+  },
   'distributions.amount': { tag: 'tiingo' },
   'distributions.frequency': { tag: 'internal', reason: 'derived from the ex-date cadence, set by ingestion' },
   'distributions.source_provider': {
@@ -371,6 +454,101 @@ export const TIINGO_ALLOWLIST_COLUMNS: ReadonlySet<string> = new Set(
   TIINGO_ALLOWLIST.map((a) => a.column),
 );
 
+// ─── View-column overrides ──────────────────────────────────────────────
+//
+// A view column whose provenance differs from the base column it reads,
+// because the view itself filters on provenance. Added 2026-08-20
+// (OPEN_ITEMS.md Decisions D1).
+//
+// The problem this solves: the manifest tags columns, but the licence
+// constrains a *combination*. `distributions.amount` is genuinely Tiingo for
+// 2,279 of 3,523 rows, so its tag must stay `tiingo` — editing it would be a
+// lie about the base table. But `v_distribution_history` serves `amount` only
+// on rows whose `field_sources` says `filing`, so the value that leaves the
+// view is never a Tiingo value. Two different facts about two different
+// things; the manifest needed somewhere to say the second one.
+//
+// The critical property is that an override is **not taken on trust**. Each
+// carries the SQL predicate that makes it true, and `pnpm dq` turns that
+// predicate into a data assertion run against real rows on every invocation
+// (scripts/data-quality.ts §19c). An override whose view stops filtering — a
+// migration that drops the CASE, say — fails the check the same day. That is
+// strictly stronger than a tag, which is asserted once here and then believed
+// forever.
+//
+// Do not add an entry here to make a gate go quiet. The entry is only honest
+// if the view really does filter, and the assertion is what proves it.
+
+export interface ViewColumnOverride {
+  /** The base column the view reads, as it appears in PROVENANCE. */
+  baseColumn: string;
+  /** What the value that leaves the view actually resolves to. */
+  tag: SourceTag;
+  /**
+   * The row-level condition under which the view emits a value. Stated as SQL
+   * over `etf.distributions d` so `pnpm dq` can assert the negation directly:
+   * zero rows may be served where this is false.
+   */
+  guard: string;
+  reason: string;
+  /** ISO yyyy-mm-dd the override was recorded. */
+  date: string;
+  source: string;
+}
+
+export const VIEW_COLUMN_OVERRIDES: Readonly<Record<string, ViewColumnOverride>> = {
+  'v_distribution_history.amount': {
+    baseColumn: 'distributions.amount',
+    tag: 'filing',
+    guard: "d.field_sources->>'amount' = 'filing'",
+    reason:
+      "The view emits `amount` only where the row's field-level provenance says the figure came from a 19a-1, 8937 or 1099. A Tiingo amount is served as NULL with `amount_source` naming why, so the raw dividend table TIINGO_LICENSE_RESPONSE.md §2 bars never forms.",
+    date: '2026-08-20',
+    source: 'docs/OPEN_ITEMS.md Decisions D1',
+  },
+  'v_distribution_history.confidence_score': {
+    baseColumn: 'distributions.confidence_score',
+    tag: 'filing',
+    guard: "d.field_sources->>'amount' = 'filing'",
+    reason:
+      "Gated by the same predicate as `amount`, and for the same reason: the score measures agreement about an amount, so on a filing-sourced row it resolves to [filing]. Note what this deliberately does NOT do — `distributions.confidence_score` is still not on the Tiingo allowlist, and the argument that a comparison score is not itself Tiingo data is still only an argument (TIINGO_LICENSE_RESPONSE.md §5). The row-level gate makes that question moot for this view rather than answering it.",
+    date: '2026-08-20',
+    source: 'docs/OPEN_ITEMS.md Decisions D1',
+  },
+  'v_screener.avg_confidence': {
+    baseColumn: 'distributions.confidence_score',
+    tag: 'filing',
+    guard: "d.field_sources->>'amount' = 'filing'",
+    reason:
+      'Averages only over filing-sourced rows. That is also what the column should always have meant — a mean confidence that included rows whose amount nobody cross-checked was describing a different thing than its name suggests.',
+    date: '2026-08-20',
+    source: 'docs/OPEN_ITEMS.md Decisions D1',
+  },
+  'v_fund_detail.avg_confidence': {
+    baseColumn: 'distributions.confidence_score',
+    tag: 'filing',
+    guard: "d.field_sources->>'amount' = 'filing'",
+    reason: 'Same aggregate as v_screener.avg_confidence, same guard.',
+    date: '2026-08-20',
+    source: 'docs/OPEN_ITEMS.md Decisions D1',
+  },
+} as const;
+
+/**
+ * Is `view`.`baseColumn` covered by an override? The licensing gate calls this
+ * to decide whether a `tiingo`-tainted base dependency is nonetheless safe.
+ * Returns the override so the caller can cite its reason.
+ */
+export function overrideFor(
+  view: string,
+  baseColumn: string,
+): ViewColumnOverride | undefined {
+  for (const [key, o] of Object.entries(VIEW_COLUMN_OVERRIDES)) {
+    if (key.startsWith(`${view}.`) && o.baseColumn === baseColumn) return o;
+  }
+  return undefined;
+}
+
 // ─── Transitive resolution ──────────────────────────────────────────────
 //
 // Pure functions. The licensing gate in `pnpm dq` (Deliverable 4 assertion 3)
@@ -380,9 +558,19 @@ export const TIINGO_ALLOWLIST_COLUMNS: ReadonlySet<string> = new Set(
 // logic, and so the fixture in the test can live next to the manifest.
 
 /** The set of source tags that carry real source data. */
-export type SourceTag = 'filing' | 'edgar' | 'sponsor' | 'tiingo';
+export type SourceTag = 'filing' | 'edgar' | 'sponsor' | 'tiingo' | 'public_record';
 
-const SOURCE_TAGS: ReadonlySet<SourceTag> = new Set(['filing', 'edgar', 'sponsor', 'tiingo']);
+const SOURCE_TAGS: ReadonlySet<SourceTag> = new Set([
+  'filing',
+  'edgar',
+  'sponsor',
+  'tiingo',
+  // `public_record` resolves to itself rather than contributing nothing (the
+  // way `internal` does). A `derived` column reading an ex-date should report
+  // `public_record` in its resolved set — that is true, and it keeps the
+  // resolution honest about what the column touched.
+  'public_record',
+]);
 
 /**
  * Resolve a single column to the set of source tags it ultimately derives
@@ -407,6 +595,15 @@ export function resolveProvenance(
   function walk(col: string): void {
     if (visited.has(col)) return;
     visited.add(col);
+    // A view-column key ('v_distribution_history.amount') resolves to what the
+    // view emits, not to what its base column holds. Checked before the
+    // manifest: the two namespaces never collide, since manifest keys are
+    // always `basetable.column`.
+    const override = VIEW_COLUMN_OVERRIDES[col];
+    if (override) {
+      out.add(override.tag);
+      return;
+    }
     const entry = manifest[col];
     if (!entry) return; // unknown column contributes nothing; completeness check flags this
     if (SOURCE_TAGS.has(entry.tag as SourceTag)) {

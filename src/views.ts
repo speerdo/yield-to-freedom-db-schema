@@ -45,6 +45,14 @@ export const vScreener = etf.view(
     daysStale: integer('days_stale'),
     avgConfidence: numeric('avg_confidence', { precision: 4, scale: 3 }),
     rocSource: varchar('roc_source', { length: 16 }),
+    /**
+     * How many TTM distributions `avgConfidence` was computed over. Added
+     * 2026-08-20 with the row-level licensing gate (migration 0011): the
+     * average now covers filing-sourced rows only, so it needs a denominator
+     * to be readable. A mean over an unstated subset is the same defect as
+     * OPEN_ITEMS.md #29.
+     */
+    confidenceN: integer('confidence_n'),
   },
 ).existing();
 
@@ -98,6 +106,8 @@ export const vFundDetail = etf.view(
     latestFinalExDate: date('latest_final_ex_date'),
     supersededCount: integer('superseded_count'),
     openReviewQueueCount: integer('open_review_queue_count'),
+    /** Denominator for `avgConfidence` — see the note on `vScreener`. */
+    confidenceN: integer('confidence_n'),
   },
 ).existing();
 
@@ -117,13 +127,19 @@ export const vFundDetail = etf.view(
  * They come back tagged `sponsor` once Phase 8's sponsor NAV ingestion lands
  * them from sponsor pages.
  *
- * `amount` is kept, even though it is still Tiingo-sourced today (§3.1: all
- * 336 rows) and therefore still prohibited as a raw dividend table. The
- * provenance gate (Deliverable 4) resolves `amount` through
- * `distributions.field_sources` and reports RED while any row still reports
- * `tiingo`; it goes green when Deliverable 6 re-sources it from filings.
- * Dropping `amount` now would gut the view; the constraint until then is on
- * new consumers and Phase 9, not on Y2F's existing screener.
+ * 2026-08-20 (OPEN_ITEMS.md Decisions D1, migration 0011): `amount` and
+ * `confidence_score` are gated row-level. The view emits them only where
+ * `field_sources->>'amount' = 'filing'`; otherwise NULL, with `amount_source`
+ * naming the origin. The base column stays tagged `tiingo` in the manifest —
+ * that is still true of 2,279 of 3,523 rows — so this is a statement about
+ * what the view emits, not a re-tagging of the table. The raw dividend table
+ * TIINGO_LICENSE_RESPONSE.md §2 bars therefore never forms: what leaves here
+ * is the sponsor's own filed figure or nothing.
+ *
+ * Every row is kept, including the withheld ones. A filtered view would read
+ * as complete coverage when it is 1,244 of 3,523 (#28), and the row still
+ * carries the thing the product is actually about — a filed tax character
+ * attached to a dated distribution.
  *
  * Phase 7 (PHASE_7_SPEC.md §5 Deliverable 7) changed the composition LATERAL
  * join to field-level precedence. One order throughout — 1099 > 8937 > 19a-1,
@@ -152,8 +168,21 @@ export const vDistributionHistory = etf.view(
     exDate: date('ex_date'),
     recordDate: date('record_date'),
     payDate: date('pay_date'),
-    /** As paid on the ex-date, in the share terms of that date. Still Tiingo-sourced today; re-sourced from filings in Deliverable 6. */
+    /**
+     * As paid on the ex-date, in the share terms of that date — and **NULL
+     * unless a filing supplied it**. Migration 0011 gates this column on
+     * `field_sources->>'amount' = 'filing'`; read `amountSource` to tell a
+     * withheld amount from a missing one.
+     */
     amount: numeric('amount', { precision: 12, scale: 6 }),
+    /**
+     * Where this row's amount came from — `filing`, `tiingo`, `sponsor`, or
+     * `unknown`. Always populated, including when `amount` is NULL: it is the
+     * column that makes "we may not publish this" distinguishable from "we do
+     * not have this".
+     */
+    amountSource: varchar('amount_source', { length: 16 }),
+    /** Gated by the same predicate as `amount` — the score is about an amount. */
     confidenceScore: numeric('confidence_score', { precision: 4, scale: 3 }),
     rocPct: numeric('roc_pct', { precision: 6, scale: 3 }),
     niiPct: numeric('nii_pct', { precision: 6, scale: 3 }),
