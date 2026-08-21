@@ -242,9 +242,24 @@ export const navHistory = etf.table(
     cumSplitFactor: numeric('cum_split_factor', { precision: 16, scale: 8 })
       .notNull()
       .default('1'),
+    // Phase 8 Deliverable 6 — which series a row belongs to. `tiingo` (the
+    // backfilled default, true of every pre-existing row) or `sponsor`
+    // (forward snapshots scraped from the sponsor's own pricing table —
+    // PHASE_8_SPEC.md §4 Deliverable 6). Neither sponsor publishes daily NAV
+    // *history*, so sponsor rows accumulate one snapshot per run rather than
+    // backfilling; the uniqueness rule is widened to (fund_id, date,
+    // source_provider) so the two series coexist and can be compared during
+    // changeover instead of one silently overwriting the other — the same
+    // model as composition's (distribution_id, source).
+    //
+    // Metrics and the cum_split_factor recompute read ONLY the `tiingo`
+    // series until the sponsor series is long enough to prefer (split factors
+    // are a Tiingo value; a sponsor row's default `1` would corrupt the
+    // product walk if it were included).
+    sourceProvider: varchar('source_provider', { length: 40 }).notNull().default('tiingo'),
   },
   (t) => ({
-    fundDateUniq: uniqueIndex('nav_fund_date_uniq').on(t.fundId, t.date),
+    fundDateUniq: uniqueIndex('nav_fund_date_uniq').on(t.fundId, t.date, t.sourceProvider),
   }),
 );
 

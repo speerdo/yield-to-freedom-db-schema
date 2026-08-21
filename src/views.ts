@@ -129,12 +129,21 @@ export const vFundDetail = etf.view(
  *
  * 2026-08-20 (OPEN_ITEMS.md Decisions D1, migration 0011): `amount` and
  * `confidence_score` are gated row-level. The view emits them only where
- * `field_sources->>'amount' = 'filing'`; otherwise NULL, with `amount_source`
- * naming the origin. The base column stays tagged `tiingo` in the manifest —
- * that is still true of 2,279 of 3,523 rows — so this is a statement about
- * what the view emits, not a re-tagging of the table. The raw dividend table
+ * `field_sources` says the amount came from the sponsor's own disclosure;
+ * otherwise NULL, with `amount_source` naming the origin. The base column
+ * stays tagged `tiingo` in the manifest — that is still true of the rows the
+ * re-sourcing passes have not reached — so this is a statement about what the
+ * view emits, not a re-tagging of the table. The raw dividend table
  * TIINGO_LICENSE_RESPONSE.md §2 bars therefore never forms: what leaves here
- * is the sponsor's own filed figure or nothing.
+ * is the sponsor's own figure or nothing.
+ *
+ * 2026-08-21 (Decisions D3, migration 0012): the guard widens from
+ * `= 'filing'` to filing OR sponsor. Phase 8's distribution-history scrape
+ * writes the sponsor's published per-distribution figures with
+ * `field_sources->>'amount' = 'sponsor'`; those are the same provenance class
+ * for licensing purposes — the fund's own disclosure of its own distribution,
+ * not a vendor's feed — and withholding them would leave #9 closed in the
+ * database but not at the surface.
  *
  * Every row is kept, including the withheld ones. A filtered view would read
  * as complete coverage when it is 1,244 of 3,523 (#28), and the row still
@@ -166,17 +175,26 @@ export const vDistributionHistory = etf.view(
   {
     ticker: varchar('ticker', { length: 12 }),
     exDate: date('ex_date'),
+    /**
+     * When the distribution was declared. Added by migration 0012: the
+     * sponsor distribution-history pages state it and neither Tiingo nor the
+     * filed documents reliably do (the 19a-1/8937 parsers read ex/record/pay).
+     * Served unconditionally — a declared corporate action is `public_record`,
+     * same as the other three dates.
+     */
+    declarationDate: date('declaration_date'),
     recordDate: date('record_date'),
     payDate: date('pay_date'),
     /**
      * As paid on the ex-date, in the share terms of that date — and **NULL
-     * unless a filing supplied it**. Migration 0011 gates this column on
-     * `field_sources->>'amount' = 'filing'`; read `amountSource` to tell a
-     * withheld amount from a missing one.
+     * unless the sponsor's own disclosure supplied it** (a filed document or
+     * the sponsor's published history — Decisions D1 + D3). Migration 0011
+     * created this gate; migration 0012 widened it to sponsor-sourced rows.
+     * Read `amountSource` to tell a withheld amount from a missing one.
      */
     amount: numeric('amount', { precision: 12, scale: 6 }),
     /**
-     * Where this row's amount came from — `filing`, `tiingo`, `sponsor`, or
+     * Where this row's amount came from — `filing`, `sponsor`, `tiingo`, or
      * `unknown`. Always populated, including when `amount` is NULL: it is the
      * column that makes "we may not publish this" distinguishable from "we do
      * not have this".

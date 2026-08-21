@@ -383,6 +383,14 @@ export const PROVENANCE: Record<string, Provenance> = {
   // prerequisite for that work (PHASE_7_SPEC.md §3.3); the manifest entry
   // for it is added in the migration that adds the column, so the
   // completeness check (assertion 1) never sees a stale entry.
+  //
+  // Phase 8 Deliverable 6 landed that column (migration 0012). The per-column
+  // tags below stay as they are — `close` remains `tiingo` because the
+  // Tiingo series is still the only complete one and the one metrics read —
+  // while sponsor rows carry the sponsor's own published NAV (and, for NEOS,
+  // market price) beside them, distinguished by `source_provider`. No granted
+  // view serves the raw series; what reaches consumers are the allowlisted
+  // scalar aggregates.
   'nav_history.id': { tag: 'internal', reason: 'surrogate primary key' },
   'nav_history.fund_id': {
     tag: 'internal',
@@ -393,8 +401,18 @@ export const PROVENANCE: Record<string, Provenance> = {
     reason: 'NYSE trading calendar date — public information, not market data; Tiingo supplied the dates but is not the source of the calendar',
   },
   'nav_history.nav': { tag: 'sponsor' },
+  // `close` keeps the bare `tiingo` tag: on the tiingo series — the only
+  // complete one, and the one metrics read — that is simply true. Sponsor
+  // snapshot rows carry the sponsor-published market price in this column,
+  // distinguished by `source_provider`; a per-column tag cannot say that (the
+  // same per-column-vs-per-row limit D1 hit on `amount`), and no granted view
+  // serves the raw series, so there is nothing here to override.
   'nav_history.close': { tag: 'tiingo' },
   'nav_history.split_factor': { tag: 'tiingo' },
+  'nav_history.source_provider': {
+    tag: 'internal',
+    reason: 'row-level series label (tiingo | sponsor); identifies which series a nav row belongs to, carries no source data itself',
+  },
   'nav_history.cum_split_factor': {
     tag: 'derived',
     inputs: ['nav_history.split_factor'],
@@ -482,12 +500,24 @@ export const TIINGO_ALLOWLIST_COLUMNS: ReadonlySet<string> = new Set(
 export interface ViewColumnOverride {
   /** The base column the view reads, as it appears in PROVENANCE. */
   baseColumn: string;
-  /** What the value that leaves the view actually resolves to. */
+  /**
+   * What the value that leaves the view resolves to. Since D3 the guarded
+   * columns can emit values of more than one source class (`filing` or
+   * `sponsor` depending on the row), so this names the dominant class rather
+   * than the whole truth — the `guard` is the precise statement. What matters
+   * mechanically is that neither class is `tiingo`: the API's serve/withhold
+   * decision keys off Tiingo-taint alone.
+   */
   tag: SourceTag;
   /**
    * The row-level condition under which the view emits a value. Stated as SQL
    * over `etf.distributions d` so `pnpm dq` can assert the negation directly:
    * zero rows may be served where this is false.
+   *
+   * Spelling constraint: `pnpm dq` matches this string (normalised) against
+   * `pg_get_viewdef` output, and Postgres reprints `IN (...)` as
+   * `= ANY (ARRAY[...])`. Write the disjunction longhand — it survives the
+   * round-trip verbatim; `IN` does not.
    */
   guard: string;
   reason: string;
@@ -496,41 +526,60 @@ export interface ViewColumnOverride {
   source: string;
 }
 
+/**
+ * The row-level licensing gate, shared by every override (D1 + D3).
+ *
+ * A served amount must carry positive evidence that it came from the
+ * sponsor's own disclosure — a filed 19a-1/8937/1099 (`filing`) or the
+ * sponsor's published distribution history (`sponsor`, Phase 8 Deliverable 6).
+ * What may never leave the view is a Tiingo amount: TIINGO_LICENSE_RESPONSE.md
+ * §2 bars the raw dividend table at every tier, and this predicate is what
+ * keeps it from forming. Fails closed — NULL `field_sources` matches neither
+ * arm.
+ *
+ * Kept as one constant because the same string appears in migration 0012's
+ * view SQL and in all four overrides below; if they drift, dq §19c fails the
+ * build that day rather than letting the wider spelling silently stop
+ * matching.
+ */
+export const AMOUNT_SERVABLE_GUARD =
+  "d.field_sources->>'amount' = 'filing' OR d.field_sources->>'amount' = 'sponsor'";
+
 export const VIEW_COLUMN_OVERRIDES: Readonly<Record<string, ViewColumnOverride>> = {
   'v_distribution_history.amount': {
     baseColumn: 'distributions.amount',
     tag: 'filing',
-    guard: "d.field_sources->>'amount' = 'filing'",
+    guard: AMOUNT_SERVABLE_GUARD,
     reason:
-      "The view emits `amount` only where the row's field-level provenance says the figure came from a 19a-1, 8937 or 1099. A Tiingo amount is served as NULL with `amount_source` naming why, so the raw dividend table TIINGO_LICENSE_RESPONSE.md §2 bars never forms.",
+      "The view emits `amount` only where the row's field-level provenance says the figure came from the sponsor's own disclosure — a filed 19a-1/8937/1099 ('filing', Decisions D1) or the sponsor's published distribution-history page ('sponsor', Decisions D3). A Tiingo amount is served as NULL with `amount_source` naming why, so the raw dividend table TIINGO_LICENSE_RESPONSE.md §2 bars never forms.",
     date: '2026-08-20',
-    source: 'docs/OPEN_ITEMS.md Decisions D1',
+    source: 'docs/OPEN_ITEMS.md Decisions D1 + D3',
   },
   'v_distribution_history.confidence_score': {
     baseColumn: 'distributions.confidence_score',
     tag: 'filing',
-    guard: "d.field_sources->>'amount' = 'filing'",
+    guard: AMOUNT_SERVABLE_GUARD,
     reason:
-      "Gated by the same predicate as `amount`, and for the same reason: the score measures agreement about an amount, so on a filing-sourced row it resolves to [filing]. Note what this deliberately does NOT do — `distributions.confidence_score` is still not on the Tiingo allowlist, and the argument that a comparison score is not itself Tiingo data is still only an argument (TIINGO_LICENSE_RESPONSE.md §5). The row-level gate makes that question moot for this view rather than answering it.",
+      "Gated by the same predicate as `amount`, and for the same reason: the score measures agreement about an amount, so on a filing- or sponsor-sourced row it resolves to sources that are not Tiingo. Note what this deliberately does NOT do — `distributions.confidence_score` is still not on the Tiingo allowlist, and the argument that a comparison score is not itself Tiingo data is still only an argument (TIINGO_LICENSE_RESPONSE.md §5). The row-level gate makes that question moot for this view rather than answering it.",
     date: '2026-08-20',
-    source: 'docs/OPEN_ITEMS.md Decisions D1',
+    source: 'docs/OPEN_ITEMS.md Decisions D1 + D3',
   },
   'v_screener.avg_confidence': {
     baseColumn: 'distributions.confidence_score',
     tag: 'filing',
-    guard: "d.field_sources->>'amount' = 'filing'",
+    guard: AMOUNT_SERVABLE_GUARD,
     reason:
-      'Averages only over filing-sourced rows. That is also what the column should always have meant — a mean confidence that included rows whose amount nobody cross-checked was describing a different thing than its name suggests.',
+      'Averages only over rows whose amount we can serve (filing- or sponsor-sourced). That is also what the column should always have meant — a mean confidence that included rows whose amount nobody cross-checked was describing a different thing than its name suggests.',
     date: '2026-08-20',
-    source: 'docs/OPEN_ITEMS.md Decisions D1',
+    source: 'docs/OPEN_ITEMS.md Decisions D1 + D3',
   },
   'v_fund_detail.avg_confidence': {
     baseColumn: 'distributions.confidence_score',
     tag: 'filing',
-    guard: "d.field_sources->>'amount' = 'filing'",
+    guard: AMOUNT_SERVABLE_GUARD,
     reason: 'Same aggregate as v_screener.avg_confidence, same guard.',
     date: '2026-08-20',
-    source: 'docs/OPEN_ITEMS.md Decisions D1',
+    source: 'docs/OPEN_ITEMS.md Decisions D1 + D3',
   },
 } as const;
 
