@@ -5,8 +5,8 @@
 // createDirectClient } from "@y2f/db-schema"`. Consumed by the worker + API in
 // this repo and by yieldtofreedom (read-only) as a git submodule.
 
-export * from './schema';
-export * from './views';
-export * from './types';
-export * from './client';
-export * from './provenance';
+export * from './schema.js';
+export * from './views.js';
+export * from './types.js';
+export * from './client.js';
+export * from './provenance.js';

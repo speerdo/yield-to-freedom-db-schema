@@ -11,7 +11,7 @@ import type {
   navHistory,
   parseReviewQueue,
   reconciliationLog,
-} from './schema';
+} from './schema.js';
 
 export type Fund = typeof funds.$inferSelect;
 export type NewFund = typeof funds.$inferInsert;

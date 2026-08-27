@@ -15,7 +15,7 @@ import {
   assertAcyclic,
   isTiingoTainted,
   resolveProvenance,
-} from './provenance';
+} from './provenance.js';
 
 describe('resolveProvenance', () => {
   test('a source tag resolves to itself', () => {

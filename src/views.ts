@@ -8,7 +8,7 @@
 // stays clean. Y2F gets typed access to the columns below.
 
 import { boolean, date, integer, numeric, text, varchar } from 'drizzle-orm/pg-core';
-import { etf } from './schema';
+import { etf } from './schema.js';
 
 /**
  * `etf.v_screener` — one row per fund, latest metrics only. The ranking surface.
