@@ -366,6 +366,64 @@ export const PROVENANCE: Record<string, Provenance> = {
   'parse_review_queue.created_at': { tag: 'internal', reason: 'row-creation timestamp' },
   'parse_review_queue.resolved_at': { tag: 'internal', reason: 'review resolution timestamp' },
 
+  // ─── api_keys / api_key_usage / api_key_stripe_events ─────────────────
+  // Migrations 0015 + 0016 (#38, #30, 11.3). Authentication and billing
+  // bookkeeping: hashed key material, the plan attached to it, per-key daily
+  // request counts, and the Stripe event-id claim ledger. None of these
+  // columns is served by any view, and `y2f_reader` is deliberately not
+  // granted these tables (0015 header) — the API reaches them as the narrow
+  // `y2f_apikeys` role. Every column is `internal`; a column added here later
+  // that carries real source data would need an honest tag, not this
+  // section's precedent.
+  'api_keys.id': { tag: 'internal', reason: 'surrogate primary key' },
+  'api_keys.key_hash': {
+    tag: 'internal',
+    reason: 'sha256 hash of an issued API key — secret key material, never served by any view',
+  },
+  'api_keys.key_prefix': {
+    tag: 'internal',
+    reason: 'short display prefix of the key hash — support identifier, not source data',
+  },
+  'api_keys.owner_email': {
+    tag: 'internal',
+    reason: 'billing contact for the key — customer bookkeeping, never served by any view',
+  },
+  'api_keys.plan': {
+    tag: 'internal',
+    reason: 'billing plan (free/paid/business), set by checkout — bookkeeping, never served',
+  },
+  'api_keys.created_at': { tag: 'internal', reason: 'row-creation timestamp' },
+  'api_keys.revoked_at': { tag: 'internal', reason: 'key-revocation timestamp' },
+  'api_keys.note': {
+    tag: 'internal',
+    reason: 'operator note attached to the key — internal bookkeeping',
+  },
+  'api_keys.stripe_customer_id': {
+    tag: 'internal',
+    reason: 'Stripe customer id linking the key to billing — external identifier, never served',
+  },
+  'api_keys.stripe_subscription_id': {
+    tag: 'internal',
+    reason: 'Stripe subscription id used to re-plan or revoke — external identifier, never served',
+  },
+  'api_key_usage.api_key_id': {
+    tag: 'internal',
+    reason: 'FK to api_keys.id; identity reference, not source data',
+  },
+  'api_key_usage.day': {
+    tag: 'internal',
+    reason: 'UTC day of the usage counter — metering key, not market data',
+  },
+  'api_key_usage.requests': {
+    tag: 'internal',
+    reason: 'per-key daily request count — metering bookkeeping, never served by any view',
+  },
+  'api_key_stripe_events.event_id': {
+    tag: 'internal',
+    reason: 'Stripe event id used for webhook idempotency — bookkeeping key, not source data',
+  },
+  'api_key_stripe_events.received_at': { tag: 'internal', reason: 'webhook claim timestamp' },
+
   // ─── nav_history ──────────────────────────────────────────────────────
   // `nav_history.close` and `nav_history.split_factor` are genuinely Tiingo
   // data — raw daily closes and split factors. `nav_history.date` is the

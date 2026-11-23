@@ -154,6 +154,49 @@ describe('assertAcyclic', () => {
   });
 });
 
+describe('API-key billing tables (0015 + 0016)', () => {
+  // The exact column set information_schema reports for the three tables. A
+  // column added to either migration without a manifest entry fails
+  // `pnpm dq`'s completeness check; this pins the fix that made it green, and
+  // fails first if someone deletes one of these entries.
+  const columns = [
+    'api_keys.id',
+    'api_keys.key_hash',
+    'api_keys.key_prefix',
+    'api_keys.owner_email',
+    'api_keys.plan',
+    'api_keys.created_at',
+    'api_keys.revoked_at',
+    'api_keys.note',
+    'api_keys.stripe_customer_id',
+    'api_keys.stripe_subscription_id',
+    'api_key_usage.api_key_id',
+    'api_key_usage.day',
+    'api_key_usage.requests',
+    'api_key_stripe_events.event_id',
+    'api_key_stripe_events.received_at',
+  ] as const;
+
+  test('every column is tagged internal', () => {
+    for (const column of columns) {
+      expect(PROVENANCE[column], column).toEqual({
+        tag: 'internal',
+        reason: expect.any(String),
+      });
+    }
+  });
+
+  test('every internal tag justifies itself', () => {
+    // `internal` is the escape hatch: an empty reason is how a real column
+    // would slip past review.
+    for (const column of columns) {
+      const entry = PROVENANCE[column];
+      expect(entry?.tag, column).toBe('internal');
+      expect(entry?.tag === 'internal' ? entry.reason.trim().length : 0, column).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('TIINGO_ALLOWLIST', () => {
   test('the six cleared scalars are on the allowlist', () => {
     // TIINGO_LICENSE_RESPONSE.md §1 names these six. The gate treats them as
